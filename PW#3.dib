@@ -44,35 +44,161 @@ public static double Solve(double a, double b, Func<double, double> function, do
     for(int i = 0; i<threadsnumber; i++)
 {
         double solution1 = 0;
-        double a1 = a;
+        double a1 = a + step;
         double step1 = step;
-        solution1 = (function(a) + function(a+n))/2*step;
+        solution1 = (function(a) + function(a+n))/2;
         threads[i] = Task.Run(delegate() {
-        for(double j = 0; j<=n; j+=step){
-            solution1 += function(a1)*step;
+        for(double j = 0; j<=n-step; j+=step)
+        {
+            solution1 += function(a1);
             a1+= step;
-            }
-            Interlocked.Add(ref solution, (long)(solution1*(Math.Pow(10, 16))));
-            barrier.SignalAndWait();
-            });
-            a += n; 
+        }
+        Interlocked.Add(ref solution, (long)(step*solution1*(Math.Pow(10, 15))));
+        barrier.SignalAndWait();
+        });
+        a += n; 
 }
     Task.WaitAll(threads);
-    return solution/Math.Pow(10,16);
+    return solution/Math.Pow(10,15);
 }   
 }
+var SIN = (double x) => Math.Sin(x);
+var X = (double x) => x;
+
+#!markdown
+
+sin(x), a = 0, b = 10 ≈ 1.8390715
 
 #!csharp
 
 #r "nuget: xunit, 2.8.1"
-
+using System.Diagnostics;
 using Xunit;
-
-var X = (double x) => x;
+using System.Runtime;
 var SIN = (double x) => Math.Sin(x);
 
-Assert.Equal(0, DefiniteIntegral.Solve(-1, 1, X, 1e-4, 2), 1e-4);
+double[] steps = [1e-1, 1e-2, 1e-3, 1e-4, 1e-5, 1e-6];
+for(int i = 0; i< 6; i++){
+    TimeSpan ts = new();
+    double d = 0;
+    for(int j = 0; j<20;j++){
+        Stopwatch stopwatch = new();
+        stopwatch.Start();
+        d += DefiniteIntegral.Solve(0, 10, SIN, steps[i], 1);
+        stopwatch.Stop();
+        ts += stopwatch.Elapsed;
+    }
+    Console.WriteLine($"{steps[i]} - {(ts.Seconds + ts.Microseconds*1e-6 + ts.Milliseconds*1e-3)/20} - {d/20}");
+}
 
-Assert.Equal(0, DefiniteIntegral.Solve(-1, 1, SIN, 1e-5, 8), 1e-4);
+#!markdown
 
-Assert.Equal(50, DefiniteIntegral.Solve(0, 10, X, 1e-6, 8), 1e-4);
+оптимальный варинт - 1e-4, т.к. он быстрее всех, у кого верны 4 цифры после запятой.
+
+#!csharp
+
+List<double> x = new();
+List<double> y = new();
+for(int i = 2; i<=32;i++){
+    TimeSpan ts = new();
+    for(int j = 0; j<20;j++){
+        Stopwatch stopwatch = new();
+        stopwatch.Start();
+        DefiniteIntegral.Solve(-100, 100, SIN, 1e-4, i);
+        stopwatch.Stop();
+        ts += stopwatch.Elapsed;
+    }
+     y.Add(i);
+     x.Add((ts.Seconds + ts.Microseconds*1e-6 + ts.Milliseconds*1e-3)/20);
+     Console.WriteLine($"{y[i-1]},{(ts.Seconds + ts.Microseconds*1e-6 + ts.Milliseconds*1e-3)/20}");
+}
+double min = x[0];
+Console.WriteLine($"Лучший вариант: {y[x.IndexOf(x.Min())]} поток(а, ов)");
+
+#!csharp
+
+#r "nuget:ScottPlot, 5.0.35"
+using Microsoft.DotNet.Interactive.Formatting;
+Formatter.Register(typeof(ScottPlot.Plot), (p, w) => 
+    w.Write(((ScottPlot.Plot)p).GetImageHtml(400, 300)), HtmlFormatter.MimeType);
+    ScottPlot.Plot plt = new();
+plt.Add.Scatter(x, y);
+plt
+
+#!csharp
+
+public static double Solve1(double a, double b, Func<double, double> function, double step)
+{
+    double solution = (function(a) + function(b))/2;
+    double solution1 = 0;
+    for(double i = a + step; i<=b - step; i+= step)
+    {
+        solution1 += function(i);
+    }
+    return solution + solution1;
+}
+Stopwatch stopwatch = new();
+stopwatch.Start();
+Solve1(-100, 100, SIN, 1e-4);
+stopwatch.Stop();
+TimeSpan ts = stopwatch.Elapsed;
+ts.Seconds + ts.Microseconds*1e-6 + ts.Milliseconds*1e-3
+
+#!markdown
+
+Лучший вариант в 18 потоков давал нам время в 0.00612535 секунд, а вариант в 1 поток дает нам время 0.024505 => многопоточный вариант быстрее в 4 раза (400 процентов)
+
+#!markdown
+
+Summary: 
+
+Оптимальный шаг 1e-4 на основе результатов:
+0.1 - 7.499999999999999E-06 - 1.7831366028925306
+0.01 - 2.4449999999999998E-05 - 1.8336159923460404
+0.001 - 0.00020475 - 1.8385273547103431
+0.0001 - 0.0016182000000000002 - 1.8390171254383243
+1E-05 - 0.0154529 - 1.8390660889645105
+1E-06 - 0.1579181 - 1.8390709860819079
+
+Оптимальное количество потоков 18 на основе результатов:
+2,0.01638085
+3,0.01105265
+4,0.008436450000000002
+5,0.006964400000000001
+6,0.008365850000000001
+7,0.009072199999999999
+8,0.0079895
+9,0.0072063000000000006
+10,0.0067573500000000005
+11,0.00630565
+12,0.0062815499999999995
+13,0.007686650000000001
+14,0.006985750000000001
+15,0.006712850000000001
+16,0.00638285
+17,0.006257250000000001
+18,0.00612535
+19,0.00673435
+20,0.0067702
+21,0.007066650000000001
+22,0.00622665
+23,0.0061521
+24,0.006206049999999999
+25,0.0068649
+26,0.006682600000000001
+27,0.0484327
+28,0.05290185000000001
+29,0.0063123
+30,0.047572050000000005
+31,0.0076685500000000005
+32,0.0603206
+Лучший вариант: 18 поток(а, ов)
+
+Сравнение многопоточной и однопоточной версий:
+Многопоточная: 18 потоков, 0.00612535 секунд
+Однопоточная: 1 поток, 0.024505 секунд
+Результат многопоточной работы быстрее в 4 раза (400 процентов)
+
+#!csharp
+
+0.024505/0.00612535
