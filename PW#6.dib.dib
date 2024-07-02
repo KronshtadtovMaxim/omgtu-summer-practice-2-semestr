@@ -37,10 +37,153 @@
 Для этого следует использовать условные события, которые позволят убедиться, что оба потока запустились и готовы читать и писать объекты и только потом запускать таймер.
 2. Для итогового вывода сравнивать усредненные значения.
 
+#!csharp
+
+using System.Collections.Concurrent;
+using System.Threading;
+using System.Diagnostics;
+Stopwatch sw = new();
+Stopwatch sw1 = new();
+Stopwatch sw2 = new();
+List<double> y = new();
+for(int i = 0; i<10; i++){
+ConcurrentQueue<int> q = new ConcurrentQueue<int>();
+Barrier br = new(2);
+int asd = 1000000;
+ManualResetEvent re = new(false);
+Thread thread = new Thread(() =>
+{
+    re.WaitOne();
+    sw2.Start();
+    sw.Start();
+    for(int i = 0; i<1000000; i++)
+    {
+        q.Enqueue(i);
+    }
+    sw.Stop();
+    br.SignalAndWait();
+});
+int qqq;
+Thread thread1 = new Thread(() =>
+{
+    re.WaitOne();
+    sw1.Start();
+        while(asd > 0)
+        {
+            if(q.TryDequeue(out qqq))
+            {
+                Interlocked.Decrement(ref asd);
+            }
+        }
+    sw1.Stop();
+    sw2.Stop();
+    br.SignalAndWait();
+});
+thread.Start();
+thread1.Start();
+re.Set();
+thread.Join();
+}
+y.Add(sw.Elapsed.TotalMilliseconds/10);
+y.Add(sw1.Elapsed.TotalMilliseconds/10);
+y.Add(sw2.Elapsed.TotalMilliseconds/10);
+Console.WriteLine($"Среднее время записи миллиона объектов в ConcurrentQueue: {sw.Elapsed.TotalMilliseconds/10}");
+Console.WriteLine($"Среднее время чтения миллиона объектов из ConcurrentQueue: {sw1.Elapsed.TotalMilliseconds/10}");
+Console.WriteLine($"Среднее время обработки миллиона объектов из ConcurrentQueue: {sw2.Elapsed.TotalMilliseconds/10}");
+
+#!csharp
+
+sw.Reset();
+sw1.Reset();
+sw2.Reset();
+for(int i = 0; i<10; i++){
+BlockingCollection<int> q = new BlockingCollection<int>();
+Barrier br = new(2);
+ManualResetEvent re = new(false);
+Thread thread = new Thread(() =>
+{
+    re.WaitOne();
+    sw2.Start();
+    sw.Start();
+    for(int i = 0; i<1000000; i++)
+    {
+        q.Add(i);
+    }
+    sw.Stop();
+    br.SignalAndWait();
+});
+Thread thread1 = new Thread(() =>
+{
+    re.WaitOne();
+    sw1.Start();
+    for(int i = 0; i<1000000; i++)
+    {
+        q.Take();
+    }
+    sw1.Stop();
+    sw2.Stop();
+    br.SignalAndWait();
+});
+thread.Start();
+thread1.Start();
+re.Set();
+thread.Join();
+}
+y.Add(sw.Elapsed.TotalMilliseconds/10);
+y.Add(sw1.Elapsed.TotalMilliseconds/10);
+y.Add(sw2.Elapsed.TotalMilliseconds/10);
+Console.WriteLine($"Среднее время записи миллиона объектов в BlockingCollection: {sw.Elapsed.TotalMilliseconds/10}");
+Console.WriteLine($"Среднее время чтения миллиона объектов из BlockingCollection: {sw1.Elapsed.TotalMilliseconds/10}");
+Console.WriteLine($"Среднее время обработки миллиона объектов из BlockingCollection: {sw2.Elapsed.TotalMilliseconds/10}");
+
+#!csharp
+
+sw.Reset();
+sw1.Reset();
+sw2.Reset();
+for(int i = 0; i<10; i++){
+Queue<int> q = new Queue<int>();
+    sw2.Start();
+    sw.Start();
+    for(int ii = 0; ii<1000000; ii++)
+    {
+        q.Append(ii);
+    }
+    sw.Stop();
+    sw1.Start();
+    for(int j = 0; j<1000000; j++)
+    {
+        q.Take(j);
+    }
+    sw1.Stop();
+    sw2.Stop();
+
+}
+y.Add(sw.Elapsed.TotalMilliseconds/10);
+y.Add(sw1.Elapsed.TotalMilliseconds/10);
+y.Add(sw2.Elapsed.TotalMilliseconds/10);
+Console.WriteLine($"Среднее время записи миллиона объектов в Queue: {sw.Elapsed.TotalMilliseconds/10}");
+Console.WriteLine($"Среднее время чтения миллиона объектов из Queue: {sw1.Elapsed.TotalMilliseconds/10}");
+Console.WriteLine($"Среднее время обработки миллиона объектов из Queue: {sw2.Elapsed.TotalMilliseconds/10}");
+List<int> x = new(){1,2,3,4,5,6,7,8,9};
+
+#!csharp
+
+#r "nuget:ScottPlot, 5.0.35"
+using Microsoft.DotNet.Interactive.Formatting;
+Formatter.Register(typeof(ScottPlot.Plot), (p, w) => 
+    w.Write(((ScottPlot.Plot)p).GetImageHtml(400, 300)), HtmlFormatter.MimeType);
+    ScottPlot.Plot plt = new();
+    plt.Add.Scatter(y,x);
+    plt
+
 #!markdown
 
-// здесь писать код
+1-3 - ConcurrentQueue, 4-6 - BlockingCollection, 7-9 - Queue. Значения в миллисекундах.
 
 #!markdown
 
 ## Вывод
+
+
+Из потокобезопасных коллекций наиболее эффективна ConcurrentQueue, что можно заметить по графику. Соотношению скорости обычной очереди и ConcurrentQueue равняется примерно 66 процентам.
