@@ -35,9 +35,15 @@
 
 #!csharp
 
+public interface ICommand
+{
+    void Execute();
+    bool completed{get;}
+}
+
 public interface IScheduler
 {
-    bool HasCommand()
+    bool HasCommand();
     ICommand Select();
     void Add(ICommand cmd);
 }
@@ -55,3 +61,58 @@ public interface IScheduler
 Необходимо учесть этот момент при реализации очереди.
 
 2. Для обепечения справедливости стратегии планировщика в слабом смысле использовать стратегию Round Robbin (циклическую) для определения следующего потока на исполнение.
+
+#!csharp
+
+using System.Collections.Concurrent;
+using System.Threading;
+public class Scheduler : IScheduler
+{
+    ConcurrentQueue<ICommand> commands = new ConcurrentQueue<ICommand>();
+
+    public bool HasCommand()
+    {
+        return commands.Count > 0;
+    }
+
+    public ICommand Select()
+    {
+        if(HasCommand()){
+        commands.TryDequeue(out ICommand nextCommand);
+        return nextCommand;
+        }
+        else return null;
+    }
+
+    public void Add(ICommand command)
+    {
+        commands.Enqueue(command);
+    }
+}
+
+#!csharp
+
+Scheduler scheduler = new();
+ICommand SomeCommand;
+ICommand SomeOtherCommand;
+scheduler.Add(SomeCommand);
+scheduler.Add(SomeOtherCommand);
+Thread Thread = new(() => 
+{
+    while (true)
+{
+        if (scheduler.HasCommand())
+        {
+            ICommand currentCommand = scheduler.Select();
+            currentCommand.Execute();
+            if(!currentCommand.completed)
+            {
+                scheduler.Add(currentCommand);
+            }
+        }
+        else
+        {
+            Thread.Sleep(50);
+        }
+    
+}});
